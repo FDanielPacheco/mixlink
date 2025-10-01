@@ -1,0 +1,23 @@
+<instance>
+  <controller>
+    <tx>
+      <name>lora0</name>
+      <device>/dev/ttyUSB0</device>
+      <driver>libE22900T22S.so</driver>
+    </tx>
+    <rx>
+      <name>lora1</name>
+      <device>/dev/ttyUSB1</device>
+      <driver>libE22900T22S.so</driver>
+    </rx>
+    <qos>libgobackn.so</qos>
+    <bytestuff>libcobs.so</bytestuff>
+  </controller>
+  <translator>
+    <default>
+      <name>eth0</name>
+    </default>
+    <bytestuff>libcobs.so</bytestuff>
+    <opt>libopttcp.so</opt>
+  </translator>
+<instance>
