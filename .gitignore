@@ -1,55 +1,50 @@
 # Prerequisites
 *.d
 
-# Object files
+# Compiled Object files
+*.slo
+*.lo
 *.o
-*.ko
 *.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
 
 # Precompiled Headers
 *.gch
 *.pch
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
+# Compiled Dynamic libraries
 *.so
-*.so.*
 *.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
 
 # Executables
 *.exe
 *.out
 *.app
-*.i*86
-*.x86_64
-*.hex
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# Folders
+build/
+.vscode/
+release/
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# Files
+include/cobs.h
+include/ringbuffer.h
+src/ringbuffer.c 
+src/cobs.c 
+src/etframequeue.c
+Makefile.bk
+src/.bk
 
-# debug information files
-*.dwo
+# Allow inside the folder driver and exclude the rest
+drivers/
+!drivers/Makefile

@@ -20,4 +20,4 @@
     <bytestuff>libcobs.so</bytestuff>
     <opt>libopttcp.so</opt>
   </translator>
-<instance>
+</instance>
