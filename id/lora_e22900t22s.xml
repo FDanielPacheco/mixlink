@@ -1,4 +1,12 @@
 <instance>
+  <translator>
+    <default>
+      <name>eth0</name>
+    </default>
+    <opt>libopttcp.so</opt>
+    <framer>libcobs.so</framer>
+  </translator>
+
   <controller>
     <tx>
       <name>lora0</name>
@@ -11,13 +19,6 @@
       <driver>libE22900T22S.so</driver>
     </rx>
     <qos>libgobackn.so</qos>
-    <bytestuff>libcobs.so</bytestuff>
+    <framer>libcobs.so</framer>
   </controller>
-  <translator>
-    <default>
-      <name>eth0</name>
-    </default>
-    <bytestuff>libcobs.so</bytestuff>
-    <opt>libopttcp.so</opt>
-  </translator>
 </instance>
