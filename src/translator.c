@@ -52,15 +52,7 @@ int8_t try_init_nic(
 );
 
 int8_t translator_valid( 
-  mixlink_translator_t * translator           
-);
-
-int8_t translator_io_cb(
-  uint8_t * data, 
-  ssize_t * len,
-  const ssize_t size,
-  const enum direction dir, 
-  const mixlink_module_t * mod
+  const mixlink_translator_t * translator           
 );
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
@@ -139,7 +131,7 @@ try_init_nic(
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
 int8_t 
 translator_valid( 
-  mixlink_translator_t * translator           
+  const mixlink_translator_t * translator           
 ){
 
   if( !translator ){
@@ -164,7 +156,7 @@ mixlink_translator_init(
 
   bool failed2soc = true;
   
-  int ret = try_init_nic( 
+  int8_t ret = try_init_nic( 
     &translator->def,
     param.nic.def
   );
@@ -178,8 +170,10 @@ mixlink_translator_init(
   else
     failed2soc = false;
 
-  if( failed2soc )
+  if( failed2soc ){
+    errno = EINVAL;    
     return -1;
+  }
 
   (void) mixlink_mod_load( 
     param.opt, 
@@ -206,7 +200,7 @@ mixlink_translator_close(
     return -1;
 
   const int8_t n_nics = 3;
-  struct nic_handler * nics[ n_nics ] = {
+  struct nic_handler * nics[ ] = {
     &translator->def,
     &translator->pair.tx,
     &translator->pair.rx
@@ -227,11 +221,10 @@ mixlink_translator_close(
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
-ssize_t 
+size_t 
 mixlink_translator_write(
   const mixlink_translator_t * translator,
-  const uint8_t * data, 
-  const ssize_t len
+  mixlink_buf8_t * data
 ){
 
   if( -1 == translator_valid( translator ) )  
@@ -242,35 +235,36 @@ mixlink_translator_write(
     soc = translator->def.soc;
   else if( translator->pair.rx.enabled )
     soc = translator->pair.rx.soc;
-  else 
+  else{
+    errno = EINVAL;
     return 0;
+  }
 
-  return write( 
+  return (size_t) write( 
     soc,
-    data,
-    len
+    data->val,
+    data->len
   );
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
-ssize_t 
+size_t 
 mixlink_translator_read( 
-  uint8_t * buf,
-  const ssize_t size,
-  const ssize_t offset,
-  const ssize_t len,
+  mixlink_buf8_t * data,
+  const size_t offset,
+  const size_t  len,
   const mixlink_translator_t * translator
 ){
 
   if( -1 == translator_valid( translator ) )  
     return 0;
 
-  if( !buf || !len || !size ){
+  if( !data || !len ){
     errno = EINVAL;
     return 0;
   }  
 
-  if( size < (offset + len) ){
+  if( data->size < (offset + len) ){
     errno = ENOMEM;
     return 0;
   }  
@@ -280,63 +274,36 @@ mixlink_translator_read(
     soc = translator->def.soc;
   else if( translator->pair.tx.enabled )
     soc = translator->pair.tx.soc;
-  else 
+  else{
+    errno = EINVAL;
     return 0;
+  }
 
-  return read( 
+  return (size_t) read( 
     soc, 
-    &buf[offset], 
-    len
+    &data->val[offset], 
+    data->len
   ); 
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
 int8_t 
-translator_io_cb(
-  uint8_t * data, 
-  ssize_t * len,
-  const ssize_t size,
-  const enum direction dir, 
-  const mixlink_module_t * mod
-){
-  if( !data || !len || !size || !mod ){
-    errno = EINVAL;
-    return 0;
-  }      
-
-  mixlink_translator_cb_t arg = {
-    .data = data,
-    .len = len,
-    .size = size
-  };
-
-  if( MIXLINK_DIRECTION_TO_NIC == dir )
-    if( mod->rx.enabled )
-      return mod->rx.fn( (void *) &arg );
-  
-  if( MIXLINK_DIRECTION_FROM_NIC == dir )
-    if( mod->tx.enabled )
-      return mod->tx.fn( (void *) &arg );
-
-  return 0;  
-}
-
-
-/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
-int8_t 
 mixlink_translator_optimizer_io(
-  uint8_t * data, 
-  ssize_t * len,
-  const ssize_t size,
+  mixlink_buf8_t * data,
   const enum direction dir, 
   const mixlink_translator_t * translator
 ){
   
   if( -1 == translator_valid( translator ) )  
-    return 0;
+    return -1;
       
-  return translator_io_cb(
-    data, len, size, dir,
+  mixlink_abi_default_io_t abi = {
+    .data = data
+  };
+  return mixlink_io_cb(
+    (void *) &abi, 
+
+    dir,
     &translator->opt
   );
 }
@@ -344,18 +311,20 @@ mixlink_translator_optimizer_io(
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
 int8_t 
 mixlink_translator_framer_io(
-  uint8_t * data, 
-  ssize_t * len,
-  const ssize_t size,
+  mixlink_buf8_t * data,
   const enum direction dir, 
   const mixlink_translator_t * translator
 ){
   
   if( -1 == translator_valid( translator ) )  
-    return 0;
+    return -1;
       
-  return translator_io_cb(
-    data, len, size, dir,
+  mixlink_abi_default_io_t abi = {
+    .data = data
+  };
+  return mixlink_io_cb(
+    (void *) &abi, 
+    dir,
     &translator->framer
   );
 }

@@ -1,24 +1,25 @@
 <instance>
   <translator>
     <default>
-      <name>eth0</name>
+      <name>lora0</name>
     </default>
-    <opt>libopttcp.so</opt>
-    <framer>libcobs.so</framer>
+    <opt>./libopttcp.so</opt>
+    <framer>./libcobs.so</framer>
   </translator>
 
   <controller>
     <tx>
       <name>lora0</name>
       <device>/dev/ttyUSB0</device>
-      <driver>libE22900T22S.so</driver>
+      <driver>./libE22900T22S.so</driver>
     </tx>
     <rx>
       <name>lora1</name>
       <device>/dev/ttyUSB1</device>
-      <driver>libE22900T22S.so</driver>
+      <driver>./libE22900T22S.so</driver>
     </rx>
-    <qos>libgobackn.so</qos>
-    <framer>libcobs.so</framer>
+    <segm>./libE22900T22S.so</segm>
+    <qos>./libgobackn.so</qos>
+    <framer>./libcobs.so</framer>
   </controller>
 </instance>

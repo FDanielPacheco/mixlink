@@ -29,6 +29,7 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <stddef.h>
 
 #include "mixlink.h"
 
@@ -54,10 +55,10 @@ struct lut_section{
 static const struct lut_section lut_sections[ MIXLINK_N_STACK_SECTIONS ] = {
   {MIXLINK_STACK_SECTION_TRANSLATOR_OPT   , "mixlink_translator_optimizer"},
   {MIXLINK_STACK_SECTION_TRANSLATOR_FRAMER, "mixlink_translator_framer"   },
-  {MIXLINK_STACK_SECTION_CONTROLLER_SEGM  , "mixlink_translator_segmenter"},
-  {MIXLINK_STACK_SECTION_CONTROLLER_QOS   , "mixlink_translator_qos"      },
-  {MIXLINK_STACK_SECTION_CONTROLLER_FRAMER, "mixlink_translator_framer"   },
-  {MIXLINK_STACK_SECTION_CONTROLLER_DRIVER, "mixlink_translator_driver"   },  
+  {MIXLINK_STACK_SECTION_CONTROLLER_SEGM  , "mixlink_controller_segmenter"},
+  {MIXLINK_STACK_SECTION_CONTROLLER_QOS   , "mixlink_controller_qos"      },
+  {MIXLINK_STACK_SECTION_CONTROLLER_FRAMER, "mixlink_controller_framer"   },
+  {MIXLINK_STACK_SECTION_CONTROLLER_DRIVER, "mixlink_controller_driver"   },  
 };
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
@@ -104,7 +105,7 @@ mixlink_mod_load(
 
   module->handle = dlopen( path, RTLD_NOW | RTLD_GLOBAL );
   if( !module->handle ){
-    error_print( "dlopen %s", dlerror( ) );
+    warning_print( "dlopen %s", dlerror( ) );
     return -1;
   }
 
@@ -113,7 +114,7 @@ mixlink_mod_load(
     const char * suffix;
     mixlink_callback_t * cb;
   } 
-  callbacks[ n_options ] = {
+  callbacks[ ] = {
     {"setup", &module->setup},
     {"loop",  &module->loop },
     {"rx",    &module->rx   },
@@ -143,7 +144,7 @@ mixlink_mod_load(
     if( err )
       warning_print( "symbol %s not found in %s", symbol, path );
   }
-
+  return 0;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
@@ -192,5 +193,28 @@ mixlink_mod_unload(
   if( no_symbol_was_loaded )
     return 0;
 
-  return dlclose( module->handle );
+  return (int8_t) dlclose( module->handle );
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
+int8_t 
+mixlink_io_cb(
+  void * abi,
+  const enum direction dir, 
+  const mixlink_module_t * mod
+){
+  if( !mod || !abi ){
+    errno = EINVAL;
+    return 0;
+  }      
+
+  if( MIXLINK_DIRECTION_TO_NIC == dir )
+    if( mod->rx.enabled )
+      return mod->rx.fn( abi );
+  
+  if( MIXLINK_DIRECTION_FROM_NIC == dir )
+    if( mod->tx.enabled )
+      return mod->tx.fn( abi );
+
+  return 0;  
 }

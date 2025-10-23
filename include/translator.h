@@ -68,22 +68,6 @@ typedef struct{
   mixlink_module_t framer;
 } mixlink_translator_t;
 
-//!< Data structures for each callback associated with the translator
-typedef struct{
-  uint8_t * data;
-  ssize_t * len;
-  const ssize_t size;
-} mixlink_translator_cb_t;
-
-/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
- * Enumerations
- **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-
-enum direction{
-  MIXLINK_DIRECTION_FROM_NIC = 0,
-  MIXLINK_DIRECTION_TO_NIC,
-};
-
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Prototypes
 **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
@@ -121,7 +105,7 @@ int8_t mixlink_translator_close(
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
  * @brief Sends a sequence of bytes to the opened NIC. 
  * 
- * @param[out] translator The translator object that will be closed.
+ * @param[in] translator The translator object that have the socket.
  * @param[in] data The sequence of bytes to send through the NIC.
  * @param[in] len The number of bytes on `data`.
  * 
@@ -129,10 +113,9 @@ int8_t mixlink_translator_close(
  *         On error, the function returns 0 and sets `errno` to indicate the error.
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-ssize_t mixlink_translator_write(
+size_t mixlink_translator_write(
   const mixlink_translator_t * translator,
-  const uint8_t * data, 
-  const ssize_t len
+  mixlink_buf8_t * data
 );
 
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
@@ -141,18 +124,17 @@ ssize_t mixlink_translator_write(
  * @param[out] buf The buffer to store the received data. Must be large enough to hold the expected data, taking into account the `offset`.
  * @param[in] size The total size of the buffer `buf`. This is used to prevent buffer overflows.
  * @param[in] offset The offset within the buffer `buf` where the received data should be stored. This allows for appending to existing content in the buffer.
- * @param[in] length The maximum number of bytes to read from the NIC.
- * @param[in] len The number of bytes on `data`.
+ * @param[in] len The maximum number of bytes to read from the NIC.
+ * @param[in] translator The translator object that have the socket.
  * 
  * @return Upon success, the function returns the number of bytes wrote to the NIC buffer. \n
  *         On error, the function returns 0 and sets `errno` to indicate the error.
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-ssize_t mixlink_translator_read( 
-  uint8_t * buf,
-  const ssize_t size,
-  const ssize_t offset,
-  const ssize_t len,
+size_t mixlink_translator_read( 
+  mixlink_buf8_t * data,
+  const size_t offset,
+  const size_t len,
   const mixlink_translator_t * translator
 );
 
@@ -163,16 +145,14 @@ ssize_t mixlink_translator_read(
  * @param len The number of bytes on `data`.
  * @param[in] size The number of bytes on `data`.
  * @param[in] dir Indication of the flow of information.
- * @param[in] translator The translator object that will be closed.
+ * @param[in] translator The translator object that have the socket.
  *
  * @return Upon success, it applies something to `data` and updates with new length, and it returns 0. \n 
  *         Otherwise -1 is returned and errno is set. 
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t mixlink_translator_optimizer_io(
-  uint8_t * data, 
-  ssize_t * len,
-  const ssize_t size,
+  mixlink_buf8_t * data,
   const enum direction dir, 
   const mixlink_translator_t * translator
 );
@@ -184,16 +164,14 @@ int8_t mixlink_translator_optimizer_io(
  * @param len The number of bytes on `data`.
  * @param[in] size The number of bytes on `data`.
  * @param[in] dir Indication of the flow of information.
- * @param[in] translator The translator object that will be closed.
+ * @param[in] translator The translator object that have the socket.
  *
  * @return Upon success, it applies something to `data` and updates with new length, and it returns 0. \n 
  *         Otherwise -1 is returned and errno is set. 
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t mixlink_translator_framer_io(
-  uint8_t * data, 
-  ssize_t * len,
-  const ssize_t size,
+  mixlink_buf8_t * data,
   const enum direction dir, 
   const mixlink_translator_t * translator
 );

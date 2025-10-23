@@ -48,3 +48,4 @@ src/.bk
 # Allow inside the folder driver and exclude the rest
 drivers/
 !drivers/Makefile
+id/cfg.xml
