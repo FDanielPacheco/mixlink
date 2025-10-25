@@ -172,29 +172,7 @@ main(
   if( 0 != xml_ret )
     return EXIT_FAILURE;
   
-
-  mixlink_translator_t translator = { 0 };  
-  const int8_t trl_ini_ret = mixlink_translator_init(
-    xml_args.translator,
-    &translator
-  );
-  if( 0 != trl_ini_ret ){
-    if( EINVAL == errno )
-      error_print( "mixlink_translator_init" );
-    return EXIT_FAILURE;
-  }
-
-  mixlink_controller_t controller = { 0 };
-  const int8_t ctrl_ini_ret = mixlink_controller_init( 
-    xml_args.controller,
-    &controller
-  );
-  if( 0 != ctrl_ini_ret ){
-    if( EINVAL == errno )
-      error_print( "mixlink_controller_init" );
-    return EXIT_FAILURE;
-  }
-
+  /*
   uint8_t data[ ] = { 0x0A, 0x0B, 0x0C, 0x0D }; 
   mixlink_buf8_t buf;
   buf.val = data;
@@ -210,28 +188,127 @@ main(
   mixlink_controller_framer_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &controller );
   mixlink_controller_segm_io( &buf, &index, MIXLINK_DIRECTION_FROM_NIC, &controller );
   mixlink_controller_driver_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &controller );
-
-  mixlink_translator_close( &translator );
-  mixlink_controller_close( &controller );
-
-  /*
-  for( ; ; ){    
-    switch( error ){
-      case init:
-      case certain_error:
-        get_mixlink_id( idpath );
-        init_translator( &translator );
-        init_controller( &controller );
-      
-      case other_error:
-        exit( );
-    }
-
-
-    loop_tx( &translator, &controller );  
-    loop_rx( &translator, &controller );
-    error = join_thread( );
-  }
+  mixlink_controller_driver_io( &buf, MIXLINK_DIRECTION_TO_NIC, &controller );
   */
 
+  mixlink_translator_t translator = { 0 };  
+  mixlink_controller_t controller = { 0 };
+  int8_t err = 0;
+
+  for( ; ; ){    
+
+    err = mixlink_translator_init(
+      xml_args.translator,
+      &translator
+    );
+    if( 0 != err ){
+      if( EINVAL == errno )
+        error_print( "mixlink_translator_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_controller_init( 
+      xml_args.controller,
+      &controller
+    );
+    if( 0 != err ){
+      if( EINVAL == errno )
+        error_print( "mixlink_controller_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_translator_opt_init( &translator );
+    if( 0 != err ){
+      error_print( "mixlink_translator_opt_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_translator_framer_init( &translator );
+    if( 0 != err ){
+      error_print( "mixlink_translator_framer_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_controller_segm_init( &controller );
+    if( 0 != err ){
+      error_print( "mixlink_controller_segm_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_controller_framer_init( &controller );
+    if( 0 != err ){
+      error_print( "mixlink_controller_framer_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_controller_qos_init( &controller );
+    if( 0 != err ){
+      error_print( "mixlink_controller_qos_init" );
+      goto cleanup;
+    }
+
+    err = mixlink_controller_driver_init( &controller );
+    if( 0 != err ){
+      error_print( "mixlink_controller_driver_init" );
+      goto cleanup;
+    }
+
+    // RX Pipeline from serial port to NIC
+    uint8_t _rxbuf[ BUFSIZ ];
+    mixlink_buf8_t rxbuf = {
+      .val = &_rxbuf,
+      .len = 0,
+      .size = BUFSIZ
+    };
+
+    for( ; ; ){
+      size_t len = mixlink_controller_read( 
+        &rxbuf,
+        0,
+        rxbuf.size,
+        &controller
+      );
+      if( !len ){
+        error_print( "mixlink_controller_read" );
+        goto cleanup;
+      }
+
+      err = mixlink_controller_driver_io(
+        &rxbuf,
+        MIXLINK_DIRECTION_TO_NIC,
+        &controller
+      );
+      if( 0 != err ){
+        error_print( "mixlink_controller_driver_io" );
+        goto cleanup;
+      }
+
+      err = mixlink_controller_framer_io( 
+        &rxbuf,
+        MIXLINK_DIRECTION_TO_NIC,
+        &controller
+      );
+      if( 0 != err ){
+        error_print( "mixlink_controller_framer_io" );
+        goto cleanup;
+      }
+
+      err = mixlink_controller_qos_io( 
+        &rxbuf,
+        MIXLINK_DIRECTION_TO_NIC,
+        &controller
+      );
+      if( 0 != err ){
+        error_print( "mixlink_controller_qos_io" );
+        goto cleanup;
+      }
+
+      
+    }
+  }
+
+  cleanup:
+    mixlink_controller_close( &controller );
+    mixlink_translator_close( &translator );
+    return EXIT_SUCCESS;
 }

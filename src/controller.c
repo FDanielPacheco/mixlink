@@ -42,6 +42,11 @@ int8_t try_init_ser(
   mixlink_param_dev_t param
 );
 
+struct serial_handler * mixlink_controller_driver_pipeline_handler(
+  const enum direction dir, 
+  mixlink_controller_t * controller
+);
+
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions description
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
@@ -85,13 +90,13 @@ try_init_ser(
   if( -1 != ret ){
     (void) memcpy( &ser->sr, &tmp, sizeof(serial_t) );
     ser->enabled = true;
-    return 0;
 
     (void) mixlink_mod_load( 
       param.driver, 
       MIXLINK_STACK_SECTION_CONTROLLER_DRIVER,
       &ser->driver
     );
+    return 0;
   }
 
   return -1;
@@ -286,43 +291,25 @@ mixlink_controller_segm_io(
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-int8_t 
-mixlink_controller_qos_io(
-  mixlink_buf8_t * data,
+struct serial_handler *
+mixlink_controller_driver_pipeline_handler(
   const enum direction dir, 
   mixlink_controller_t * controller
 ){
-  if( -1 == controller_valid( controller ) )
-    return -1;  
+  if( controller->def.enabled )
+    return &controller->def;
 
-  mixlink_abi_default_io_t abi = {
-    .data = data
-  };
-  return mixlink_mod_exec_io(
-    (void *) &abi,
-    dir,
-    &controller->qos
-  );
-}
+  if( dir == MIXLINK_DIRECTION_FROM_NIC ){
+    if( controller->pair.tx.enabled )
+      return &controller->pair.tx;
+  }
 
-/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-int8_t 
-mixlink_controller_framer_io(
-  mixlink_buf8_t * data,
-  const enum direction dir, 
-  mixlink_controller_t * controller
-){
-  if( -1 == controller_valid( controller ) )
-    return -1;  
+  if( dir == MIXLINK_DIRECTION_TO_NIC ){
+    if( controller->pair.rx.enabled )
+      return &controller->pair.rx;
+  }
 
-  mixlink_abi_default_io_t abi = {
-    .data = data
-  };
-  return mixlink_mod_exec_io(
-    (void *) &abi,
-    dir,
-    &controller->qos
-  );
+  return NULL;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
@@ -333,21 +320,80 @@ mixlink_controller_driver_io(
   mixlink_controller_t * controller
 ){
   if( -1 == controller_valid( controller ) )
-    return -1;  
+    return -1;
 
-  mixlink_abi_default_io_t abi = {
-    .data = data
-  };
-  return mixlink_mod_exec_io(
-    (void *) &abi,
+  struct serial_handler * handler = mixlink_controller_driver_pipeline_handler(
     dir,
-    &controller->qos
+    controller
+  );
+
+  if( !handler )
+    return -1;
+
+  mixlink_abi_driver_io_t abi;
+  abi.sr = &( handler->sr ); 
+  abi.data = data;
+
+  mixlink_callback_t * cb = NULL;
+  if( dir == MIXLINK_DIRECTION_FROM_NIC )
+    cb = &( handler->driver.tx );
+
+  if( dir == MIXLINK_DIRECTION_TO_NIC )
+    cb = &( handler->driver.rx );
+    
+  if( !cb )
+    return -1;
+
+  return mixlink_mod_exec( 
+    (void *) &abi,
+    cb
   );
 }
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Macros
- **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+#define X(name) \
+  MIXLINK_GEN_DEF_MODULES_IMPL( controller, name, init  , mixlink_controller_t ) \
+  MIXLINK_GEN_DEF_MODULES_IMPL( controller, name, deinit, mixlink_controller_t ) \
+  MIXLINK_GEN_DEF_MODULES_IMPL( controller, name, loop  , mixlink_controller_t )
+MIXLINK_CONTROLLER_MODULES
+#undef X
+
+#define X(name) \
+  MIXLINK_GEN_IO_MODULES_IMPL( controller, name, io, mixlink_controller_t )
+X(framer)
+X(qos)
+#undef X
+
+#define MIXLINK_GEN_DEF_DRIVER( suffix )          \
+  int8_t \
+  mixlink_controller_driver_##suffix(             \
+    const enum direction dir,                     \
+    mixlink_controller_t * controller             \
+  ){ \
+    if( -1 == controller_valid( controller ) )    \
+      return -1;                                  \
+    struct serial_handler * handler =             \
+      mixlink_controller_driver_pipeline_handler( \
+        dir,                                      \
+        controller                                \
+      );                                          \
+    if( !handler ) return -1;                     \
+    mixlink_abi_driver_def_t abi;                 \
+    abi.sr = &( handler->sr );                    \
+    return mixlink_mod_exec(                      \
+      (void *) &abi,                              \
+      &( handler->driver.suffix )                 \
+    );                                            \
+  } 
+
+#define X(suffix)  \
+  MIXLINK_GEN_DEF_DRIVER(suffix)
+MIXLINK_DEF_SUFFIXES
+#undef X
+
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * End of file

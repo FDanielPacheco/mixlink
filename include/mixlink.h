@@ -146,14 +146,14 @@ enum direction{
 
 #define MIXLINK_GEN_DEF_MODULES_DECL(prefix, name, suffix, type) \
   int8_t mixlink_##prefix##_##name##_##suffix( \
-    const type * self                         \
+    const type * self                          \
   );
 
 #define MIXLINK_GEN_IO_MODULES_DECL(prefix, name, suffix, type) \
   int8_t mixlink_##prefix##_##name##_##suffix( \
-    mixlink_buf8_t * data,                    \
-    enum direction dir,                       \
-    const type * self                         \
+    mixlink_buf8_t * data,                     \
+    enum direction dir,                        \
+    const type * self                          \
   );
 
 #define MIXLINK_GEN_DEF_MODULES_IMPL( prefix, name, suffix, type ) \
