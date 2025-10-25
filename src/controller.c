@@ -69,6 +69,9 @@ try_init_ser(
     return -1;
   }
 
+  if( !strcmp( param.device, "" ) )
+    return -1;
+
   serial_t tmp;
   int8_t ret = serial_open( 
     &tmp,
@@ -83,13 +86,13 @@ try_init_ser(
     (void) memcpy( &ser->sr, &tmp, sizeof(serial_t) );
     ser->enabled = true;
     return 0;
-  }
 
-  (void) mixlink_mod_load( 
-    param.driver, 
-    MIXLINK_STACK_SECTION_CONTROLLER_DRIVER,
-    &ser->driver
-  );
+    (void) mixlink_mod_load( 
+      param.driver, 
+      MIXLINK_STACK_SECTION_CONTROLLER_DRIVER,
+      &ser->driver
+    );
+  }
 
   return -1;
 }
@@ -146,7 +149,7 @@ mixlink_controller_init(
   (void) mixlink_mod_load( 
     param.segm, 
     MIXLINK_STACK_SECTION_CONTROLLER_SEGM,
-    &controller->segmenter
+    &controller->segm
   );
 
   return 0;
@@ -175,7 +178,7 @@ mixlink_controller_close(
     }
   }
 
-  (void) mixlink_mod_unload( &controller->segmenter );
+  (void) mixlink_mod_unload( &controller->segm );
   (void) mixlink_mod_unload( &controller->qos );
   (void) mixlink_mod_unload( &controller->framer );
 
@@ -244,7 +247,7 @@ mixlink_controller_read(
   }
 
   size_t len = serial_read(
-    (char *) data->val,
+    (char *) &data->val[offset],
     data->size,
     0,
     total,
@@ -262,7 +265,7 @@ mixlink_controller_read(
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
-mixlink_controller_segmenter_io( 
+mixlink_controller_segm_io( 
   mixlink_buf8_t * data,
   mixlink_buf16_t * index,
   const enum direction dir, 
@@ -275,10 +278,10 @@ mixlink_controller_segmenter_io(
     .data = data,
     .index = index
   };
-  return mixlink_io_cb(
+  return mixlink_mod_exec_io(
     (void *) &abi,
     dir,
-    &controller->segmenter
+    &controller->segm
   );    
 }
 
@@ -295,7 +298,7 @@ mixlink_controller_qos_io(
   mixlink_abi_default_io_t abi = {
     .data = data
   };
-  return mixlink_io_cb(
+  return mixlink_mod_exec_io(
     (void *) &abi,
     dir,
     &controller->qos
@@ -315,7 +318,7 @@ mixlink_controller_framer_io(
   mixlink_abi_default_io_t abi = {
     .data = data
   };
-  return mixlink_io_cb(
+  return mixlink_mod_exec_io(
     (void *) &abi,
     dir,
     &controller->qos
@@ -335,12 +338,16 @@ mixlink_controller_driver_io(
   mixlink_abi_default_io_t abi = {
     .data = data
   };
-  return mixlink_io_cb(
+  return mixlink_mod_exec_io(
     (void *) &abi,
     dir,
     &controller->qos
   );
 }
+
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Macros
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * End of file

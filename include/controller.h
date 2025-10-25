@@ -64,7 +64,7 @@ typedef struct{
     struct serial_handler tx;
   } pair;
 
-  mixlink_module_t segmenter;
+  mixlink_module_t segm;
   mixlink_module_t qos;
   mixlink_module_t framer;
 } mixlink_controller_t;
@@ -151,7 +151,7 @@ size_t mixlink_controller_read(
  *         Otherwise -1 is returned and errno is set. 
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-int8_t mixlink_controller_segmenter_io( 
+int8_t mixlink_controller_segm_io( 
   mixlink_buf8_t * data,
   mixlink_buf16_t * index,
   const enum direction dir, 
@@ -208,7 +208,6 @@ int8_t mixlink_controller_driver_io(
   const enum direction dir, 
   mixlink_controller_t * controller
 );
-
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * External C++ extern macro

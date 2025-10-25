@@ -13,7 +13,7 @@ LLVM_AR = llvm-ar
 
 # Flags
 CFLAGS = -I/usr/local/include 
-CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude -Wno-gnu-zero-variadic-macro-arguments -O2
+CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror  -g -Iinclude -Wno-gnu-zero-variadic-macro-arguments -O2
 ASM_FLAGS = $(CFLAGS)
 OPT_FLAGS = -O2 -strip-debug
 LD_FLAGS = 

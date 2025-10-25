@@ -138,43 +138,25 @@ size_t mixlink_translator_read(
   const mixlink_translator_t * translator
 );
 
-/**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
- * @brief Calls the dynamic function to optimize the sent or received frame. 
- * 
- * @param data The sequence of bytes that represent a network frame from the NIC or to the NIC.
- * @param len The number of bytes on `data`.
- * @param[in] size The number of bytes on `data`.
- * @param[in] dir Indication of the flow of information.
- * @param[in] translator The translator object that have the socket.
- *
- * @return Upon success, it applies something to `data` and updates with new length, and it returns 0. \n 
- *         Otherwise -1 is returned and errno is set. 
- * 
- **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-int8_t mixlink_translator_optimizer_io(
-  mixlink_buf8_t * data,
-  const enum direction dir, 
-  const mixlink_translator_t * translator
-);
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Macros
+**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
-/**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
- * @brief Calls the dynamic function to apply or remove framming to the sent or received frame. 
- * 
- * @param data The sequence of bytes that represent a network frame from the NIC or to the NIC.
- * @param len The number of bytes on `data`.
- * @param[in] size The number of bytes on `data`.
- * @param[in] dir Indication of the flow of information.
- * @param[in] translator The translator object that have the socket.
- *
- * @return Upon success, it applies something to `data` and updates with new length, and it returns 0. \n 
- *         Otherwise -1 is returned and errno is set. 
- * 
- **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-int8_t mixlink_translator_framer_io(
-  mixlink_buf8_t * data,
-  const enum direction dir, 
-  const mixlink_translator_t * translator
-);
+#define MIXLINK_TRANSLATOR_MODULES \
+  X(opt)                           \
+  X(framer)
+
+#define X(name) \
+  MIXLINK_GEN_DEF_MODULES_DECL( translator, name, init  , mixlink_translator_t ) \
+  MIXLINK_GEN_DEF_MODULES_DECL( translator, name, deinit, mixlink_translator_t ) \
+  MIXLINK_GEN_DEF_MODULES_DECL( translator, name, loop  , mixlink_translator_t )
+MIXLINK_TRANSLATOR_MODULES
+#undef X
+
+#define X(name) \
+    MIXLINK_GEN_IO_MODULES_DECL( translator, name, io, mixlink_translator_t )
+MIXLINK_TRANSLATOR_MODULES
+#undef X
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * External C++ extern macro
