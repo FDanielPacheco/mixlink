@@ -298,7 +298,7 @@ MIXLINK_TRANSLATOR_MODULES
 #undef X
 
 #define X(name) \
-    MIXLINK_GEN_IO_MODULES_IMPL( translator, name, io, mixlink_translator_t )
+  MIXLINK_GEN_IO_MODULES_IMPL( translator, name, io, mixlink_translator_t )
 MIXLINK_TRANSLATOR_MODULES
 #undef X
 

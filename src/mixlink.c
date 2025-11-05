@@ -31,6 +31,7 @@
 #include <stdbool.h>
 #include <argp.h>
 #include <xcxml.h>
+#include <unistd.h>
 
 #include "mixlink.h"
 #include "translator.h"
@@ -136,8 +137,186 @@ static const xml_field_t xml_fields[ ] = {
 };
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Simplication functins Prototypes 
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+int8_t args_parse(
+  int argc,
+  char ** argv,
+  struct argp_arguments * args
+);
+
+int8_t load_xml( 
+  struct argp_arguments * args,
+  mixlink_args_t * xml_args
+);
+
+int8_t init_stack( 
+  mixlink_translator_t * translator,
+  mixlink_controller_t * controller
+);
+ 
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
+int8_t 
+args_parse(
+  int argc,
+  char ** argv,
+  struct argp_arguments * args
+){
+  return (int8_t) argp_parse( 
+    &argp,
+    argc,
+    argv,
+    0,
+    0,
+    args
+  );
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
+int8_t
+load_xml( 
+  struct argp_arguments * args,
+  mixlink_args_t * xml_args
+){
+  return xml_retrive_data(
+    args->path,
+    xml_fields,
+    XML_ARR_SIZE(xml_fields), 
+    (void *) xml_args,
+    sizeof(mixlink_args_t)
+  );
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
+int8_t 
+init_stack( 
+  mixlink_translator_t * translator,
+  mixlink_controller_t * controller
+){
+  enum step_type {
+    STEP_MOD_CORE,
+    STEP_MOD_DRIVER
+  };
+
+
+  struct step {
+    const char * name;
+    enum step_type type;
+    union {
+      struct { 
+        int8_t (*fn)(void *); 
+        void *obj; 
+      } mod_core;
+
+      struct { 
+        int8_t (*fn)(const enum direction, mixlink_controller_t *); 
+        enum direction dir; 
+        mixlink_controller_t *obj; 
+      } mod_driver;
+
+    } call;
+  };
+
+
+  struct step steps[] = {
+    // === Run init on the Core modules ===
+    { "mixlink_translator_opt_init", 
+      STEP_MOD_CORE,
+      .call.mod_core = { 
+        (int8_t (*)(void *)) mixlink_translator_opt_init, 
+        translator
+      } 
+    },
+    { "mixlink_translator_framer_init", 
+      STEP_MOD_CORE,
+      .call.mod_core = { 
+        (int8_t (*)(void *)) mixlink_translator_framer_init, 
+        translator 
+      } 
+    },
+    { "mixlink_controller_segm_init", 
+      STEP_MOD_CORE,
+      .call.mod_core = { 
+        (int8_t (*)(void *)) mixlink_controller_segm_init, 
+        controller 
+      } 
+    },
+    { "mixlink_controller_framer_init", 
+      STEP_MOD_CORE,
+      .call.mod_core = { 
+        (int8_t (*)(void *)) mixlink_controller_framer_init, 
+        controller 
+      } 
+    },
+    { "mixlink_controller_qos_init", 
+      STEP_MOD_CORE,
+      .call.mod_core = { 
+        (int8_t (*)(void *)) mixlink_controller_qos_init, 
+        controller 
+      } 
+    },
+
+    // === Run init on the Driver modules (two directions) ===
+    { "mixlink_controller_driver_init (FROM_NIC)", 
+      STEP_MOD_DRIVER,
+      .call.mod_driver = { 
+        mixlink_controller_driver_init, 
+        MIXLINK_DIRECTION_FROM_NIC, 
+        controller 
+      } 
+    },
+    { "mixlink_controller_driver_init (TO_NIC)", 
+      STEP_MOD_DRIVER,
+      .call.mod_driver = { 
+        mixlink_controller_driver_init, 
+        MIXLINK_DIRECTION_TO_NIC, 
+        controller 
+      } 
+    }
+  };
+
+  size_t nsteps = sizeof(steps) / sizeof(steps[0]);
+
+  for( size_t i = 0; i < nsteps; ++i ){
+    int8_t ret = 1;  
+
+    while( 0 != ret ){
+      switch( steps[i].type ){     
+        case STEP_MOD_CORE:
+          ret = steps[i].call.mod_core.fn(
+            steps[i].call.mod_core.obj
+          );
+          break;        
+
+        case STEP_MOD_DRIVER:
+          ret = steps[i].call.mod_driver.fn(
+            steps[i].call.mod_driver.dir,
+            steps[i].call.mod_driver.obj
+          );
+          break;
+      }
+
+      if( ret )
+        usleep( 1e6 );  // Retry on temporary failure   
+
+      if( -1 == ret ){
+        if( EINVAL == errno )
+          error_print( "%s", steps[i].name );
+        return -1;
+      }    
+
+    }
+  }
+
+  return 0;
+}
+
+
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Entry point
@@ -148,110 +327,148 @@ main(
   char ** argv
 ){
   
-	struct argp_arguments arguments = { 0 }; 
-  const error_t arg_ret = argp_parse( 
-    &argp,
-    argc,
-    argv,
-    0,
-    0,
+	struct argp_arguments arguments  = { 0 }; 
+  mixlink_args_t        xml_args   = { 0 };
+  mixlink_translator_t  translator = { 0 };  
+  mixlink_controller_t  controller = { 0 };
+
+  const error_t arg_ret = args_parse( 
+    argc, 
+    argv, 
     &arguments
   );
-  if( 0 != arg_ret )
+  if( 0 != arg_ret ){
+    error_print( "args_parse" );
     return EXIT_FAILURE;
+  }
 
   
-  mixlink_args_t xml_args = { 0 };
-  const int8_t xml_ret = xml_retrive_data(
-    arguments.path,
-    xml_fields,
-    XML_ARR_SIZE(xml_fields), 
-    (void *) &xml_args,
-    sizeof(xml_args)
+  const int8_t xml_ret = load_xml( 
+    &arguments,
+    &xml_args
   );
-  if( 0 != xml_ret )
+  if( 0 != xml_ret ){
+    error_print( "load_xml" );
     return EXIT_FAILURE;
-  
-  /*
-  uint8_t data[ ] = { 0x0A, 0x0B, 0x0C, 0x0D }; 
-  mixlink_buf8_t buf;
-  buf.val = data;
-  buf.size = sizeof(data);
-  buf.len = sizeof(data);
+  }
 
-  mixlink_buf16_t index;
-
-  mixlink_translator_framer_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &translator );
-  mixlink_translator_opt_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &translator );
-
-  mixlink_controller_qos_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &controller );
-  mixlink_controller_framer_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &controller );
-  mixlink_controller_segm_io( &buf, &index, MIXLINK_DIRECTION_FROM_NIC, &controller );
-  mixlink_controller_driver_io( &buf, MIXLINK_DIRECTION_FROM_NIC, &controller );
-  mixlink_controller_driver_io( &buf, MIXLINK_DIRECTION_TO_NIC, &controller );
-  */
-
-  mixlink_translator_t translator = { 0 };  
-  mixlink_controller_t controller = { 0 };
-  int8_t err = 0;
 
   for( ; ; ){    
 
-    err = mixlink_translator_init(
+    const int8_t trs_init_ret = mixlink_translator_init( 
+      xml_args.translator, 
+      &translator
+    );
+    if( -1 == trs_init_ret ){
+      error_print("mixlink_translator_init");
+      goto cleanup;
+    }
+
+    const int8_t ctrl_init_ret = mixlink_controller_init( 
+      xml_args.controller, 
+      &controller
+    );
+    if( -1 == ctrl_init_ret ){
+      error_print("mixlink_controller_init");
+      goto cleanup;
+    }
+
+    const int8_t stack_init_ret = init_stack( 
+      &translator,
+      &controller
+    );
+    if( 0 != stack_init_ret )
+      goto cleanup;
+
+    // Run the RX pipeline
+
+
+    // Run the TX pipeline
+
+    // Run the Loop pipeline
+
+  }
+
+  /*
+  deinitstack:
+    deinit_stack( );
+  */
+
+  cleanup:
+    mixlink_controller_close( &controller );
+    mixlink_translator_close( &translator );
+    return EXIT_SUCCESS;
+}
+
+
+/*
+
+    val = mixlink_translator_init(
       xml_args.translator,
       &translator
     );
-    if( 0 != err ){
+    if( 0 != val ){
       if( EINVAL == errno )
         error_print( "mixlink_translator_init" );
       goto cleanup;
     }
 
-    err = mixlink_controller_init( 
+    val = mixlink_controller_init( 
       xml_args.controller,
       &controller
     );
-    if( 0 != err ){
+    if( 0 != val ){
       if( EINVAL == errno )
         error_print( "mixlink_controller_init" );
       goto cleanup;
     }
 
-    err = mixlink_translator_opt_init( &translator );
-    if( 0 != err ){
+    val = mixlink_translator_opt_init( &translator );
+    if( 0 != val ){
       error_print( "mixlink_translator_opt_init" );
       goto cleanup;
     }
 
-    err = mixlink_translator_framer_init( &translator );
-    if( 0 != err ){
+    val = mixlink_translator_framer_init( &translator );
+    if( 0 != val ){
       error_print( "mixlink_translator_framer_init" );
       goto cleanup;
     }
 
-    err = mixlink_controller_segm_init( &controller );
-    if( 0 != err ){
+    val = mixlink_controller_segm_init( &controller );
+    if( 0 != val ){
       error_print( "mixlink_controller_segm_init" );
       goto cleanup;
     }
 
-    err = mixlink_controller_framer_init( &controller );
-    if( 0 != err ){
+    val = mixlink_controller_framer_init( &controller );
+    if( 0 != val ){
       error_print( "mixlink_controller_framer_init" );
       goto cleanup;
     }
 
-    err = mixlink_controller_qos_init( &controller );
-    if( 0 != err ){
+    val = mixlink_controller_qos_init( &controller );
+    if( 0 != val ){
       error_print( "mixlink_controller_qos_init" );
       goto cleanup;
     }
 
-    err = mixlink_controller_driver_init( &controller );
-    if( 0 != err ){
+    val = mixlink_controller_driver_init( &controller );
+    if( 0 != val ){
       error_print( "mixlink_controller_driver_init" );
       goto cleanup;
     }
+
+..................................
+
+        uint16_t _indexbuf[ BUFSIZ ];
+    // The first segment is indicated to start at position 0
+    _indexbuf[0] = 0;
+    mixlink_buf16_t indexbuf = {
+      .val = &_indexbuf,
+      .len = 1,
+      .size = BUFSIZ
+    };
 
     // RX Pipeline from serial port to NIC
     uint8_t _rxbuf[ BUFSIZ ];
@@ -261,54 +478,73 @@ main(
       .size = BUFSIZ
     };
 
+    int8_t in1, in2, in3, in4;
     for( ; ; ){
-      size_t len = mixlink_controller_read( 
-        &rxbuf,
-        0,
-        rxbuf.size,
-        &controller
-      );
-      if( !len ){
-        error_print( "mixlink_controller_read" );
-        goto cleanup;
-      }
+      rxbuf.len = 0;
+      in4 = 0;
 
-      err = mixlink_controller_driver_io(
-        &rxbuf,
-        MIXLINK_DIRECTION_TO_NIC,
-        &controller
-      );
-      if( 0 != err ){
-        error_print( "mixlink_controller_driver_io" );
-        goto cleanup;
-      }
+      do { 
+        in3 = 0;
+        do { 
+          in2 = 0;
+          do {
+            in1 = 0;
+            do { 
+              size_t len = mixlink_controller_read( 
+                &rxbuf,
+                rxbuf.len,
+                rxbuf.size,
+                &controller
+              );
+              if( !len ){
+                error_print( "mixlink_controller_read" );
+                goto cleanup;
+              }
 
-      err = mixlink_controller_framer_io( 
-        &rxbuf,
-        MIXLINK_DIRECTION_TO_NIC,
-        &controller
-      );
-      if( 0 != err ){
-        error_print( "mixlink_controller_framer_io" );
-        goto cleanup;
-      }
+              in1 = mixlink_controller_driver_io(
+                &rxbuf,
+                MIXLINK_DIRECTION_TO_NIC,
+                &controller
+              );
+              if( -1 == in1 ){
+                error_print( "mixlink_controller_driver_io" );
+                goto cleanup;
+              }
 
-      err = mixlink_controller_qos_io( 
-        &rxbuf,
-        MIXLINK_DIRECTION_TO_NIC,
-        &controller
-      );
-      if( 0 != err ){
-        error_print( "mixlink_controller_qos_io" );
-        goto cleanup;
-      }
+            } while( 0 != in1 );
 
+            val = mixlink_controller_framer_io( 
+              &rxbuf,
+              MIXLINK_DIRECTION_TO_NIC,
+              &controller
+            );
+            if( 0 != val ){
+              error_print( "mixlink_controller_framer_io" );
+              goto cleanup;
+            }
+
+          } while( 0 != in2 );
+
+            val = mixlink_controller_qos_io( 
+              &rxbuf,
+              MIXLINK_DIRECTION_TO_NIC,
+              &controller
+            );
+            if( 0 != val ){
+              error_print( "mixlink_controller_qos_io" );
+              goto cleanup;
+            }
+
+          } while( 0 != in3 );
+
+          val = mixlink_controller_segm_io( 
+            &rxbuf,
+            &indexbuf,
+            MIXLINK_DIRECTION_TO_NIC,
+            &controller
+          );
+
+        } while( 0 != in4 );
       
     }
-  }
-
-  cleanup:
-    mixlink_controller_close( &controller );
-    mixlink_translator_close( &translator );
-    return EXIT_SUCCESS;
-}
+*/

@@ -144,16 +144,16 @@ enum direction{
 #define MIXLINK_IO_SUFFIXES \
   X(io)  
 
-#define MIXLINK_GEN_DEF_MODULES_DECL(prefix, name, suffix, type) \
+#define MIXLINK_GEN_DEF_MODULES_DECL(prefix, name, suffix, type ) \
   int8_t mixlink_##prefix##_##name##_##suffix( \
     const type * self                          \
   );
 
-#define MIXLINK_GEN_IO_MODULES_DECL(prefix, name, suffix, type) \
-  int8_t mixlink_##prefix##_##name##_##suffix( \
-    mixlink_buf8_t * data,                     \
-    enum direction dir,                        \
-    const type * self                          \
+#define MIXLINK_GEN_IO_MODULES_DECL(prefix, name, suffix, type ) \
+  int8_t mixlink_##prefix##_##name##_##suffix(   \
+    mixlink_abi_gen_io_t abi,                    \
+    enum direction dir,                          \
+    const type * self                            \
   );
 
 #define MIXLINK_GEN_DEF_MODULES_IMPL( prefix, name, suffix, type ) \
@@ -174,7 +174,7 @@ enum direction{
 #define MIXLINK_GEN_IO_MODULES_IMPL( prefix, name, suffix, type ) \
   int8_t                                         \
   mixlink_##prefix##_##name##_##suffix(          \
-    mixlink_buf8_t * data,                       \
+    mixlink_abi_gen_io_t abi,                    \
     enum direction dir,                          \
     const type * self                            \
   ){                                             \
@@ -182,9 +182,6 @@ enum direction{
       errno = EINVAL;                            \
       return -1;                                 \
     }                                            \
-    mixlink_abi_default_io_t abi = {             \
-      .data = data                               \
-    };                                           \
     return mixlink_mod_exec_io(                  \
       (void*) &abi,                              \
       dir,                                       \
@@ -232,15 +229,20 @@ int8_t mixlink_mod_unload(
 );
 
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
- * @brief To simplify the process of executing a interface function with a module. 
+ * @brief Executes an interface function associated with a module in a unified way. 
  * 
- * @param[in] arg The arguments packet into a struct, so the module can open it and view its content.
- * @param[in] iface Interface to interact with the module.
+ * This function provides a standardized mechanism for invoking module-level interface
+ * callbacks with a given argument structure. The argument is passed as a generic pointer
+ * so that each module can interpret it according to its own ABI definition.
+ * 
+ * @param[in] arg  Pointer to an argument structure containing the data required by the module.
+ * @param[in] cb Pointer to the callback function representing the module interface.
  *
- * @return The return value is dependent on the module return value.
- *         However, if the iface is NULL or a symbol was not found, the function returns -1 and errno is set.
- * 
- *  - `EINVAL`: Invalid argument \n
+ * @return The return value depends on the result of the module’s internal operation: \n
+ *         - '1': An error occurred while invoking `mixlink_mod_exec()` (e.g., invalid pointer or failed dispatch). \n
+ *         - '0': The function executed successfully and the operation within the module completed normally. \n
+ *         - '1': The function executed successfully, but the operation inside the module reported an unsuccessful outcome (e.g., frame not found in the array given). \n
+ *         If the module is not defined, the function return 0 by default.
  * 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t mixlink_mod_exec(
