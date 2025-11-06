@@ -137,7 +137,7 @@ static const xml_field_t xml_fields[ ] = {
 };
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
- * Simplication functins Prototypes 
+ * Functions helpers to simplify the main function 
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
 int8_t args_parse(
@@ -150,17 +150,7 @@ int8_t load_xml(
   struct argp_arguments * args,
   mixlink_args_t * xml_args
 );
-
-int8_t init_stack( 
-  mixlink_translator_t * translator,
-  mixlink_controller_t * controller
-);
  
-/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
- * Functions
- **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-
-/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
 int8_t 
 args_parse(
   int argc,
@@ -177,7 +167,6 @@ args_parse(
   );
 }
 
-/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
 int8_t
 load_xml( 
   struct argp_arguments * args,
@@ -192,106 +181,67 @@ load_xml(
   );
 }
 
-/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/ 
-int8_t 
-init_stack( 
-  mixlink_translator_t * translator,
-  mixlink_controller_t * controller
+/***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+ * Stack Code 
+ **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+enum step_type {
+  STEP_MOD_CORE,
+  STEP_MOD_DRIVER
+};
+
+typedef struct {
+  const char * name;
+  enum step_type type;
+
+  union {
+    struct { 
+      int8_t (*fn)(void *); 
+      void *obj; 
+    } mod_core;
+
+    struct { 
+      int8_t (*fn)( const enum direction, mixlink_controller_t * ); 
+      enum direction dir; 
+      mixlink_controller_t * obj; 
+    } mod_driver;
+    
+  } call;
+} stack_step_t;
+
+#define MIXLINK_CORE_STEP( phase, name, obj )                  \
+  { "mixlink_" #name "_" #phase, STEP_MOD_CORE,                \
+    .call.mod_core = {                                         \
+      (int8_t (*)(void *)) mixlink_##name##_##phase,           \
+      obj                                                      \
+    }                                                          \
+  }
+
+#define MIXLINK_DRIVER_STEP( phase, dir, obj )                 \
+  { "mixlink_controller_driver_" #phase, STEP_MOD_DRIVER,      \
+    .call.mod_driver = {                                       \
+      mixlink_controller_driver_##phase,                       \
+      dir,                                                     \
+      obj                                                      \
+    }                                                          \
+  }                                                       
+
+int8_t
+run_stack_steps( 
+  const char * phase, 
+  stack_step_t * steps, 
+  size_t nsteps
 ){
-  enum step_type {
-    STEP_MOD_CORE,
-    STEP_MOD_DRIVER
-  };
-
-
-  struct step {
-    const char * name;
-    enum step_type type;
-    union {
-      struct { 
-        int8_t (*fn)(void *); 
-        void *obj; 
-      } mod_core;
-
-      struct { 
-        int8_t (*fn)(const enum direction, mixlink_controller_t *); 
-        enum direction dir; 
-        mixlink_controller_t *obj; 
-      } mod_driver;
-
-    } call;
-  };
-
-
-  struct step steps[] = {
-    // === Run init on the Core modules ===
-    { "mixlink_translator_opt_init", 
-      STEP_MOD_CORE,
-      .call.mod_core = { 
-        (int8_t (*)(void *)) mixlink_translator_opt_init, 
-        translator
-      } 
-    },
-    { "mixlink_translator_framer_init", 
-      STEP_MOD_CORE,
-      .call.mod_core = { 
-        (int8_t (*)(void *)) mixlink_translator_framer_init, 
-        translator 
-      } 
-    },
-    { "mixlink_controller_segm_init", 
-      STEP_MOD_CORE,
-      .call.mod_core = { 
-        (int8_t (*)(void *)) mixlink_controller_segm_init, 
-        controller 
-      } 
-    },
-    { "mixlink_controller_framer_init", 
-      STEP_MOD_CORE,
-      .call.mod_core = { 
-        (int8_t (*)(void *)) mixlink_controller_framer_init, 
-        controller 
-      } 
-    },
-    { "mixlink_controller_qos_init", 
-      STEP_MOD_CORE,
-      .call.mod_core = { 
-        (int8_t (*)(void *)) mixlink_controller_qos_init, 
-        controller 
-      } 
-    },
-
-    // === Run init on the Driver modules (two directions) ===
-    { "mixlink_controller_driver_init (FROM_NIC)", 
-      STEP_MOD_DRIVER,
-      .call.mod_driver = { 
-        mixlink_controller_driver_init, 
-        MIXLINK_DIRECTION_FROM_NIC, 
-        controller 
-      } 
-    },
-    { "mixlink_controller_driver_init (TO_NIC)", 
-      STEP_MOD_DRIVER,
-      .call.mod_driver = { 
-        mixlink_controller_driver_init, 
-        MIXLINK_DIRECTION_TO_NIC, 
-        controller 
-      } 
-    }
-  };
-
-  size_t nsteps = sizeof(steps) / sizeof(steps[0]);
-
-  for( size_t i = 0; i < nsteps; ++i ){
-    int8_t ret = 1;  
+  for( size_t i = 0 ; i < nsteps ; ++i ){
+    int8_t ret = 1;
 
     while( 0 != ret ){
-      switch( steps[i].type ){     
+      switch( steps[i].type ){
         case STEP_MOD_CORE:
           ret = steps[i].call.mod_core.fn(
             steps[i].call.mod_core.obj
           );
-          break;        
+          break;
 
         case STEP_MOD_DRIVER:
           ret = steps[i].call.mod_driver.fn(
@@ -302,21 +252,100 @@ init_stack(
       }
 
       if( ret )
-        usleep( 1e6 );  // Retry on temporary failure   
+        usleep( 1e6 );  // retry on temporary failure
 
       if( -1 == ret ){
-        if( EINVAL == errno )
-          error_print( "%s", steps[i].name );
+        if (errno == EINVAL)
+          error_print("[%s] failed on step: %s", phase, steps[i].name );
         return -1;
-      }    
-
+      }
     }
-  }
 
+  }
   return 0;
 }
 
 
+int8_t 
+init_stack( 
+  mixlink_translator_t * translator,
+  mixlink_controller_t * controller
+){
+  const size_t maxsteps = 8;
+  stack_step_t steps[ maxsteps ];  
+  size_t nsteps = 0;
+
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( init, translator_opt,    translator );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( init, translator_framer, translator );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( init, controller_segm,   controller );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( init, controller_framer, controller );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( init, controller_qos,    controller );
+
+  if( !controller->def.enabled ){
+    steps[ nsteps ++ ] = (stack_step_t) MIXLINK_DRIVER_STEP( init, MIXLINK_DIRECTION_FROM_NIC, controller );
+    steps[ nsteps ++ ] = (stack_step_t) MIXLINK_DRIVER_STEP( init, MIXLINK_DIRECTION_TO_NIC, controller );
+  }
+  else
+    steps[ nsteps ++ ] = (stack_step_t) MIXLINK_DRIVER_STEP( init, MIXLINK_DIRECTION_FROM_NIC, controller );
+
+  return run_stack_steps( 
+    "init" , 
+    steps,
+    nsteps
+  );
+}
+
+int8_t 
+deinit_stack( 
+  mixlink_translator_t * translator,
+  mixlink_controller_t * controller
+){
+  const size_t maxsteps = 8;
+  stack_step_t steps[ maxsteps ];  
+  size_t nsteps = 0;
+
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( deinit, translator_opt,    translator );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( deinit, translator_framer, translator );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( deinit, controller_segm,   controller );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( deinit, controller_framer, controller );
+  steps[ nsteps ++ ] = (stack_step_t) MIXLINK_CORE_STEP( deinit, controller_qos,    controller );
+
+  if( !controller->def.enabled ){
+    steps[ nsteps ++ ] = (stack_step_t) MIXLINK_DRIVER_STEP( deinit, MIXLINK_DIRECTION_FROM_NIC, controller );
+    steps[ nsteps ++ ] = (stack_step_t) MIXLINK_DRIVER_STEP( deinit, MIXLINK_DIRECTION_TO_NIC, controller );
+  }
+  else
+    steps[ nsteps ++ ] = (stack_step_t) MIXLINK_DRIVER_STEP( deinit, MIXLINK_DIRECTION_FROM_NIC, controller );  
+
+  return run_stack_steps( 
+    "deinit" , 
+    steps,
+    nsteps
+  );
+}
+
+int8_t 
+loop_stack( 
+  mixlink_translator_t * translator,
+  mixlink_controller_t * controller
+){
+  stack_step_t steps[ ] = {
+    MIXLINK_CORE_STEP( loop, translator_opt,    translator ),
+    MIXLINK_CORE_STEP( loop, translator_framer, translator ),
+    MIXLINK_CORE_STEP( loop, controller_segm,   controller ),
+    MIXLINK_CORE_STEP( loop, controller_framer, controller ),
+    MIXLINK_CORE_STEP( loop, controller_qos,    controller ),
+    MIXLINK_DRIVER_STEP( loop, MIXLINK_DIRECTION_FROM_NIC, controller ),
+    MIXLINK_DRIVER_STEP( loop, MIXLINK_DIRECTION_TO_NIC, controller )
+  };
+  size_t nsteps = sizeof( steps ) / sizeof( steps[0] );
+
+  return run_stack_steps( 
+    "loop" , 
+    steps,
+    nsteps
+  );
+}
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Entry point
@@ -353,46 +382,54 @@ main(
   }
 
 
-  for( ; ; ){    
-
-    const int8_t trs_init_ret = mixlink_translator_init( 
-      xml_args.translator, 
-      &translator
-    );
-    if( -1 == trs_init_ret ){
-      error_print("mixlink_translator_init");
-      goto cleanup;
-    }
-
-    const int8_t ctrl_init_ret = mixlink_controller_init( 
-      xml_args.controller, 
-      &controller
-    );
-    if( -1 == ctrl_init_ret ){
-      error_print("mixlink_controller_init");
-      goto cleanup;
-    }
-
-    const int8_t stack_init_ret = init_stack( 
-      &translator,
-      &controller
-    );
-    if( 0 != stack_init_ret )
-      goto cleanup;
-
-    // Run the RX pipeline
-
-
-    // Run the TX pipeline
-
-    // Run the Loop pipeline
-
+  const int8_t trs_init_ret = mixlink_translator_init( 
+    xml_args.translator, 
+    &translator
+  );
+  if( -1 == trs_init_ret ){
+    error_print("mixlink_translator_init");
+    goto cleanup;
   }
 
-  /*
-  deinitstack:
-    deinit_stack( );
-  */
+  const int8_t ctrl_init_ret = mixlink_controller_init( 
+    xml_args.controller, 
+    &controller
+  );
+  if( -1 == ctrl_init_ret ){
+    error_print("mixlink_controller_init");
+    goto cleanup;
+  }
+
+  const int8_t stack_init_ret = init_stack( 
+    &translator,
+    &controller
+  );
+  if( 0 != stack_init_ret ){
+    error_print("init_stack");
+    goto cleanup;
+  }
+
+  // Run the RX pipeline
+
+
+  // Run the TX pipeline
+
+  // Run the Loop pipeline
+  const int8_t stack_loop_ret = loop_stack( 
+    &translator,
+    &controller
+  );
+  if( 0 != stack_loop_ret ){
+    error_print("loop_stack");
+    goto cleanup;
+  }
+
+  sleep( 1 );
+
+  (void) deinit_stack( 
+    &translator,
+    &controller
+  );
 
   cleanup:
     mixlink_controller_close( &controller );

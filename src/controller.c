@@ -357,7 +357,7 @@ MIXLINK_CONTROLLER_MODULES
         dir,                                      \
         controller                                \
       );                                          \
-    if( !handler ) return -1;                     \
+    if( !handler ) return 0;                      \
     mixlink_abi_def_serial_t abi;                 \
     abi.sr = &( handler->sr );                    \
     return mixlink_mod_exec(                      \
